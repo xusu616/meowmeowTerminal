@@ -46,7 +46,10 @@ hotkeys:
       param: 13
     - key: "<ctrl>+y"
       action: "switch_character"
-      param: 0
+      param: 14
+    - key: "<ctrl>+u"
+      action: "switch_character"
+      param: 15
 
   # 显示当前角色
   show_character:

@@ -1,0 +1,637 @@
+"""适用于 macOS 的 Textual UI 版本"""
+
+import random
+import time
+from pynput.keyboard import Key, Controller, GlobalHotKeys
+import pyperclip
+import io
+from PIL import Image
+import pyclip
+from sys import platform
+from rich import print
+import os
+import yaml
+import tempfile
+import subprocess
+import uuid
+import threading
+from text_fit_draw import draw_text_auto
+from image_fit_paste import paste_image_auto
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.widgets import Header, Footer, Button, RadioSet, RadioButton, Label, ProgressBar
+from textual.binding import Binding
+from textual.reactive import reactive
+
+PLATFORM = platform.lower()
+if PLATFORM == "windows":
+    try:
+        import win32clipboard
+    except ImportError:
+        print("[red]请先安装 pywin32 库: pip install pywin32[/red]")
+        raise
+
+class ManosabaTextBox:
+    def __init__(self):
+        # 常量定义
+        self.BOX_RECT = ((728, 355), (2339, 800))
+        self.KEY_DELAY = 0.1
+        self.AUTO_PASTE_IMAGE = True
+        self.AUTO_SEND_IMAGE = True
+
+        self.kbd_controller = Controller()
+
+        self.BASE_PATH = ""
+        self.CONFIG_PATH = ""
+        self.ASSETS_PATH = ""
+        self.CACHE_PATH = ""
+        self.setup_paths()
+
+        self.mahoshojo = {}
+        self.text_configs_dict = {}
+        self.character_list = []
+        self.load_configs()
+
+        self.emote = None
+        self.value_1 = -1
+        self.current_character_index = 3
+
+    def setup_paths(self):
+        """设置文件路径"""
+        self.BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+        self.CONFIG_PATH = os.path.join(self.BASE_PATH, "config")
+        self.ASSETS_PATH = os.path.join(self.BASE_PATH, "assets")
+        self.CACHE_PATH = os.path.join(self.ASSETS_PATH, "cache")
+        os.makedirs(self.CACHE_PATH, exist_ok=True)
+
+    def load_configs(self):
+        """加载配置文件"""
+        with open(os.path.join(self.CONFIG_PATH, "chara_meta.yml"), 'r', encoding="utf-8") as fp:
+            config = yaml.safe_load(fp)
+            self.mahoshojo = config["mahoshojo"]
+
+        with open(os.path.join(self.CONFIG_PATH, "text_configs.yml"), 'r', encoding="utf-8") as fp:
+            config = yaml.safe_load(fp)
+            self.text_configs_dict = config["text_configs"]
+
+        self.character_list = list(self.mahoshojo.keys())
+
+    def get_character(self, index: str | None = None, full_name: bool = False) -> str:
+        """获取当前角色名称"""
+        if index is not None:
+            return self.mahoshojo[index]['full_name'] if full_name else index
+        else:
+            chara = self.character_list[self.current_character_index - 1]
+            return self.mahoshojo[chara]['full_name'] if full_name else chara
+
+    def switch_character(self, new_index: int) -> bool:
+        """切换到指定索引的角色"""
+        if 0 < new_index <= len(self.character_list):
+            self.current_character_index = new_index
+            return True
+        return False
+
+    def get_current_font(self) -> str:
+        """返回当前角色的字体文件绝对路径"""
+        return os.path.join(self.BASE_PATH, 'assets', 'fonts',
+                            self.mahoshojo[self.get_character()]["font"])
+
+    def get_current_emotion_count(self) -> int:
+        """获取当前角色的表情数量"""
+        return self.mahoshojo[self.get_character()]["emotion_count"]
+
+    def delete(self, folder_path: str) -> None:
+        """删除指定文件夹中的所有jpg文件"""
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith('.jpg'):
+                os.remove(os.path.join(folder_path, filename))
+
+    def generate_and_save_images(self, character_name: str, progress_callback=None) -> None:
+        """生成并保存指定角色的所有表情图片"""
+        emotion_cnt = self.mahoshojo[character_name]["emotion_count"]
+
+        # 检查是否已经生成过
+        for filename in os.listdir(self.CACHE_PATH):
+            if filename.startswith(character_name):
+                return
+
+        total_images = 16 * emotion_cnt
+
+        for j in range(emotion_cnt):
+            for i in range(16):
+                background_path = os.path.join(
+                    self.BASE_PATH, 'assets', "background", f"c{i + 1}.png"
+                )
+                overlay_path = os.path.join(
+                    self.BASE_PATH, 'assets', 'chara', character_name,
+                    f"{character_name} ({j + 1}).png"
+                )
+
+                background = Image.open(background_path).convert("RGBA")
+                overlay = Image.open(overlay_path).convert("RGBA")
+
+                img_num = j * 16 + i + 1
+                result = background.copy()
+                result.paste(overlay, (0, 134), overlay)
+
+                save_path = os.path.join(
+                    self.CACHE_PATH, f"{character_name} ({img_num}).jpg"
+                )
+                result.convert("RGB").save(save_path)
+
+                if progress_callback:
+                    progress_callback(j * 16 + i + 1, total_images)
+
+    def get_random_value(self) -> str:
+        """随机获取表情图片名称"""
+        character_name = self.get_character()
+        emotion_cnt = self.get_current_emotion_count()
+        total_images = 16 * emotion_cnt
+
+        if self.emote:
+            i = random.randint((self.emote - 1) * 16 + 1, self.emote * 16)
+            self.value_1 = i
+            self.emote = None
+            return f"{character_name} ({i})"
+
+        max_attempts = 100
+        attempts = 0
+        i = random.randint(1, total_images)
+
+        while attempts < max_attempts:
+            i = random.randint(1, total_images)
+            current_emotion = (i - 1) // 16
+
+            if self.value_1 == -1:
+                self.value_1 = i
+                return f"{character_name} ({i})"
+
+            if current_emotion != (self.value_1 - 1) // 16:
+                self.value_1 = i
+                return f"{character_name} ({i})"
+
+            attempts += 1
+
+        self.value_1 = i
+        return f"{character_name} ({i})"
+
+    def copy_png_bytes_to_clipboard(self, png_bytes: bytes) -> None:
+        """将PNG字节数据复制到剪贴板"""
+        try:
+            if PLATFORM == 'darwin':
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    tmp.write(png_bytes)
+                    tmp_path = tmp.name
+
+                cmd = f"""osascript -e 'set the clipboard to (read (POSIX file "{tmp_path}") as «class PNGf»)'"""
+                result = subprocess.run(cmd, shell=True, capture_output=True)
+
+                os.unlink(tmp_path)
+
+                if result.returncode != 0:
+                    print(f"复制图片到剪贴板失败: {result.stderr.decode()}")
+            elif PLATFORM == 'windows':
+                # 打开 PNG 字节为 Image
+                image = Image.open(io.BytesIO(png_bytes))
+                # 转换成 BMP 字节流（去掉 BMP 文件头的前 14 个字节）
+                with io.BytesIO() as output:
+                    image.convert("RGB").save(output, "BMP")
+                    bmp_data = output.getvalue()[14:]
+                # 打开剪贴板并写入 DIB 格式
+                win32clipboard.OpenClipboard()
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32clipboard.CF_DIB, bmp_data)
+                win32clipboard.CloseClipboard()
+            else:
+                # todo: Linux 支持
+                pass
+        except Exception as e:
+            print(f"复制图片到剪贴板失败: {e}")
+
+    def cut_all_and_get_text(self) -> str:
+        """模拟全选和剪切操作，返回剪切得到的文本内容"""
+        pyperclip.copy("")
+
+        self.kbd_controller.press(Key.ctrl if PLATFORM != 'darwin' else Key.cmd)
+        self.kbd_controller.press('a')
+        self.kbd_controller.release('a')
+        self.kbd_controller.press('x')
+        self.kbd_controller.release('x')
+        self.kbd_controller.release(Key.ctrl if PLATFORM != 'darwin' else Key.cmd)
+        time.sleep(self.KEY_DELAY)
+
+        new_clip = pyperclip.paste()
+        return new_clip
+
+    def try_get_image(self) -> Image.Image | None:
+        """尝试从剪贴板获取图像"""
+        try:
+            data = pyclip.paste()
+
+            if isinstance(data, bytes) and len(data) > 0:
+                try:
+                    text = data.decode('utf-8')
+                    if len(text) < 10000:
+                        return None
+                except (UnicodeDecodeError, AttributeError):
+                    pass
+
+                try:
+                    image = Image.open(io.BytesIO(data))
+                    image.load()
+                    return image
+                except Exception:
+                    return None
+
+        except Exception as e:
+            print(f"无法从剪贴板获取图像: {e}")
+        return None
+
+    def start(self) -> str:
+        """生成并发送图片，返回状态消息"""
+        character_name = self.get_character()
+        address = os.path.join(self.CACHE_PATH, self.get_random_value() + ".jpg")
+        baseimage_file = address
+
+        text_box_topleft = (self.BOX_RECT[0][0], self.BOX_RECT[0][1])
+        image_box_bottomright = (self.BOX_RECT[1][0], self.BOX_RECT[1][1])
+        text = self.cut_all_and_get_text()
+        image = self.try_get_image()
+
+        if text == "" and image is None:
+            return "错误: 没有文本或图像喵"
+
+        png_bytes = None
+
+        if image is not None:
+            try:
+                png_bytes = paste_image_auto(
+                    image_source=baseimage_file,
+                    image_overlay=None,
+                    top_left=text_box_topleft,
+                    bottom_right=image_box_bottomright,
+                    content_image=image,
+                    align="center",
+                    valign="middle",
+                    padding=12,
+                    allow_upscale=True,
+                    keep_alpha=True,
+                    role_name=character_name,
+                    text_configs_dict=self.text_configs_dict,
+                )
+            except Exception as e:
+                return f"生成图像失败: {e}"
+
+        elif text is not None and text != "":
+            try:
+                png_bytes = draw_text_auto(
+                    image_source=baseimage_file,
+                    image_overlay=None,
+                    top_left=text_box_topleft,
+                    bottom_right=image_box_bottomright,
+                    text=text,
+                    align="left",
+                    valign='top',
+                    color=(255, 255, 255),
+                    max_font_height=145,
+                    font_path=self.get_current_font(),
+                    role_name=character_name,
+                    text_configs_dict=self.text_configs_dict,
+                )
+
+            except Exception as e:
+                return f"生成图像失败: {e}"
+
+        if png_bytes is None:
+            return "生成图像失败！"
+
+        self.copy_png_bytes_to_clipboard(png_bytes)
+
+        if self.AUTO_PASTE_IMAGE:
+            self.kbd_controller.press(Key.ctrl if PLATFORM != 'darwin' else Key.cmd)
+            self.kbd_controller.press('v')
+            self.kbd_controller.release('v')
+            self.kbd_controller.release(Key.ctrl if PLATFORM != 'darwin' else Key.cmd)
+
+            time.sleep(0.3)
+
+            if self.AUTO_SEND_IMAGE:
+                self.kbd_controller.press(Key.enter)
+                self.kbd_controller.release(Key.enter)
+
+        return f"成功生成图片！角色: {character_name}, 表情: {1 + (self.value_1 // 16)}"
+
+
+class TextBoxApp(App):
+    """魔法少女的魔女裁判文本框生成器 Textual UI"""
+
+    CSS = """
+    
+    Screen {
+        align: center middle;
+    }
+    
+    #main_container {
+        width: 100%;
+        height: 100%;
+        padding: 1;
+    }
+    
+    #character_panel {
+        width: 1fr;
+        height: 100%;
+        padding: 1;
+    }
+    
+    #emotion_panel {
+        width: 1fr;
+        height: 100%;
+        padding: 1;
+    }
+    
+    #control_panel {
+        width: 100%;
+        height: auto;
+        border: ascii $secondary;
+        padding: 0;
+    }
+    
+    .panel_title {
+        text-style: bold;
+        color: $foreground;
+        margin-bottom: 1;
+    }
+    
+    RadioSet {
+        height: auto;
+    }
+    
+    #status_label {
+        margin-left: 2;
+        color: $accent;
+        text-style: italic;
+    }
+    
+    #progress_bar {
+        margin-top: 1;
+        display: none;
+    }
+    
+    #progress_bar.visible {
+        display: block;
+    }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+enter", "generate", "生成图片", priority=False),
+        Binding("ctrl+d", "delete_cache", "清除缓存", priority=True),
+        Binding("ctrl+q", "quit", "退出", priority=True),
+    ]
+
+    TITLE = "魔裁 文本框生成器"
+    theme = "tokyo-night"
+
+    current_character = reactive("ema")
+    current_emotion = reactive(1)
+    status_msg = reactive("就绪")
+
+    CHARACTER_NAMES = {
+        "ema": "樱羽艾玛",
+        "hiro": "二阶堂希罗",
+        "sherri": "橘雪莉",
+        "hanna": "远野汉娜",
+        "anan": "夏目安安",
+        "yuki": "月代雪",
+        "meruru": "冰上梅露露",
+        "noa": "城崎诺亚",
+        "reia": "莲见蕾雅",
+        "miria": "佐伯米莉亚",
+        "nanoka": "黑部奈叶香",
+        "mago": "宝生玛格",
+        "alisa": "紫藤亚里沙",
+        "coco": "泽渡可可",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.textbox = ManosabaTextBox()
+        self.current_character = self.textbox.get_character()
+        self.hotkey_listener = None
+        self.setup_global_hotkeys()
+
+    def setup_global_hotkeys(self) -> None:
+        """设置全局热键监听器"""
+        hotkeys = {
+            '<ctrl>+<enter>': self.trigger_generate,
+            '<cmd>+<enter>': self.trigger_generate,  # macOS 使用 Cmd
+        }
+
+        self.hotkey_listener = GlobalHotKeys(hotkeys)
+        self.hotkey_listener.start()
+
+    def trigger_generate(self) -> None:
+        """全局热键触发生成图片（在后台线程中调用）"""
+        # 使用 call_from_thread 在主线程中安全地调用 action_generate
+        self.call_from_thread(self.action_generate)
+
+    def compose(self) -> ComposeResult:
+        """创建UI布局"""
+        yield Header()
+
+        with Container(id="main_container"):
+            with Horizontal():
+                with Vertical(id="character_panel"):
+                    yield Label("选择角色 (Character)", classes="panel_title")
+                    with ScrollableContainer():
+                        with RadioSet(id="character_radio"):
+                            for char_id in self.textbox.character_list:
+                                char_name = self.textbox.get_character(char_id, full_name=True)
+                                yield RadioButton(
+                                    f"{char_name} ({char_id})",
+                                    value=char_id == self.current_character,
+                                    id=f"char_{char_id}"
+                                )
+
+                with Vertical(id="emotion_panel"):
+                    yield Label("选择表情 (Emotion)", classes="panel_title")
+                    with ScrollableContainer():
+                        with RadioSet(id="emotion_radio"):
+                            emotion_cnt = self.textbox.get_current_emotion_count()
+                            for i in range(1, emotion_cnt + 1):
+                                yield RadioButton(
+                                    f"表情 {i}",
+                                    value=(i == 1),
+                                    id=f"emotion_{i}"
+                                )
+
+            with Horizontal(id="control_panel"):
+                yield Label(self.status_msg, id="status_label")
+                yield ProgressBar(id="progress_bar")
+
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """应用启动时执行"""
+        self.update_status(f"当前角色: {self.textbox.get_character(self.current_character, full_name=True)} ")
+
+        # 预加载当前角色（在后台线程中执行）
+        char_name = self.textbox.get_character(self.current_character)
+        self.load_character_images(char_name)
+
+    def load_character_images(self, char_name: str) -> None:
+        """在后台线程中加载角色图片"""
+
+        def load_in_thread():
+            def update_progress(current: int, total: int):
+                self.call_from_thread(self._update_progress, current, total)
+
+            # 禁用选择框
+            self.call_from_thread(self._disable_radio_sets)
+
+            self.call_from_thread(self._show_progress_bar)
+            self.call_from_thread(self.update_status,
+                                  f"正在加载角色 {self.textbox.get_character(self.current_character, full_name=True)} ...")
+
+            self.textbox.generate_and_save_images(char_name, update_progress)
+
+            self.call_from_thread(self._hide_progress_bar)
+            self.call_from_thread(self.update_status,
+                                  f"角色 {self.textbox.get_character(self.current_character, full_name=True)} 加载完成 ✓")
+
+            # 恢复选择框
+            self.call_from_thread(self._enable_radio_sets)
+
+        thread = threading.Thread(target=load_in_thread, daemon=True)
+        thread.start()
+
+    def _show_progress_bar(self) -> None:
+        """显示进度条"""
+        progress_bar = self.query_one("#progress_bar", ProgressBar)
+        progress_bar.add_class("visible")
+        progress_bar.update(total=100, progress=0)
+
+    def _hide_progress_bar(self) -> None:
+        """隐藏进度条"""
+        progress_bar = self.query_one("#progress_bar", ProgressBar)
+        progress_bar.remove_class("visible")
+
+    def _update_progress(self, current: int, total: int) -> None:
+        """更新进度条"""
+        progress_bar = self.query_one("#progress_bar", ProgressBar)
+        progress_bar.update(total=total, progress=current)
+
+    def _disable_radio_sets(self) -> None:
+        """禁用所有RadioSet"""
+        try:
+            char_radio = self.query_one("#character_radio", RadioSet)
+            char_radio.disabled = True
+
+            emotion_radio = self.query_one("#emotion_radio", RadioSet)
+            emotion_radio.disabled = True
+        except Exception as e:
+            self.notify(str(e), title="禁用选择框失败", severity="warning")
+
+    def _enable_radio_sets(self) -> None:
+        """启用所有RadioSet"""
+        try:
+            char_radio = self.query_one("#character_radio", RadioSet)
+            char_radio.disabled = False
+
+            emotion_radio = self.query_one("#emotion_radio", RadioSet)
+            emotion_radio.disabled = False
+        except Exception as e:
+            self.notify(str(e), title="启用选择框失败", severity="warning")
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        """当RadioSet选项改变时"""
+        if event.radio_set.id == "character_radio":
+            selected_char = event.pressed.id.replace("char_", "")
+            self.current_character = selected_char
+
+            # 更新角色索引
+            char_idx = self.textbox.character_list.index(selected_char) + 1
+            self.textbox.switch_character(char_idx)
+
+            # 预加载新角色（使用带进度条的加载方法）
+            self.load_character_images(selected_char)
+
+            # 重新生成表情选项（延迟执行以确保状态更新完成）
+            self.call_after_refresh(self.refresh_emotion_panel)
+
+        elif event.radio_set.id == "emotion_radio":
+            # 从按钮标签中提取表情编号
+            try:
+                label = event.pressed.label.plain
+                emotion_num = int(label.split()[-1])
+                self.current_emotion = emotion_num
+                self.textbox.emote = emotion_num
+                self.update_status(f"已选择表情 {emotion_num} 喵")
+            except (ValueError, AttributeError, IndexError) as e:
+                self.update_status(e)
+                pass
+
+    def refresh_emotion_panel(self) -> None:
+        """刷新表情面板"""
+        emotion_radio = self.query_one("#emotion_radio", RadioSet)
+
+        # 获取所有子组件并逐个移除
+        children = list(emotion_radio.children)
+        for child in children:
+            try:
+                child.remove()
+            except Exception:
+                pass
+
+        # 重置表情为 1
+        self.current_emotion = 1
+        self.textbox.emote = 1
+
+        # 添加新的按钮
+        emotion_cnt = self.textbox.get_current_emotion_count()
+        for i in range(1, emotion_cnt + 1):
+            unique_id = f"emotion_{self.current_character}_{i}_{uuid.uuid4().hex[:8]}"
+            btn = RadioButton(
+                f"表情 {i}",
+                value=(i == 1),  # 始终选中表情 1
+                id=unique_id
+            )
+            emotion_radio.mount(btn)
+
+    def update_status(self, msg: str) -> None:
+        """更新状态栏"""
+        self.status_msg = msg
+        status_label = self.query_one("#status_label", Label)
+        status_label.update(msg)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """按钮点击事件"""
+        if event.button.id == "btn_generate":
+            self.action_generate()
+        elif event.button.id == "btn_delete":
+            self.action_delete_cache()
+        elif event.button.id == "btn_quit":
+            self.action_quit()
+
+    def action_generate(self) -> None:
+        """生成图片"""
+        self.update_status("正在生成图片...")
+        result = self.textbox.start()
+        self.update_status(result)
+
+    def action_delete_cache(self) -> None:
+        """清除缓存"""
+        self.update_status("正在清除缓存...")
+        self.textbox.delete(self.textbox.CACHE_PATH)
+        self.update_status("缓存已清除，需要重新加载角色")
+
+    def action_quit(self) -> None:
+        """退出应用"""
+        # 停止全局热键监听器
+        if self.hotkey_listener:
+            self.hotkey_listener.stop()
+        self.exit()
+
+
+if __name__ == "__main__":
+    app = TextBoxApp()
+    app.run()
