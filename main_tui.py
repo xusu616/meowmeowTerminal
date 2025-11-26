@@ -358,7 +358,7 @@ class ManosabaTextBox:
         return f"成功生成图片！角色: {character_name}, 表情: {1 + (self.value_1 // 16)}"
 
 
-class TextBoxTUI(App):
+class ManosabaTUI(App):
     """魔裁文本框生成器 TUI"""
 
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "textual.tcss"),
@@ -366,9 +366,10 @@ class TextBoxTUI(App):
         CSS = f.read()
 
     BINDINGS = [
-        Binding("ctrl+e", "generate", "生成图片", priority=False),
+        Binding("ctrl+e", "generate", "生成图片", priority=True),
         Binding("ctrl+d", "delete_cache", "清除缓存", priority=True),
         Binding("ctrl+q", "quit", "退出", priority=True),
+        Binding("ctrl+r", "pause", "暂停", priority=True),
     ]
 
     TITLE = "魔裁 文本框生成器"
@@ -380,6 +381,7 @@ class TextBoxTUI(App):
 
     def __init__(self):
         super().__init__()
+        self.active = True
         self.textbox = ManosabaTextBox()
         self.current_character = self.textbox.get_character()
         self.hotkey_listener = None
@@ -400,7 +402,8 @@ class TextBoxTUI(App):
     def trigger_generate(self) -> None:
         """全局热键触发生成图片（在后台线程中调用）"""
         # 使用 call_from_thread 在主线程中安全地调用 action_generate
-        self.call_from_thread(self.action_generate)
+        if self.active:
+            self.call_from_thread(self.action_generate)
 
     def compose(self) -> ComposeResult:
         """创建UI布局"""
@@ -571,6 +574,15 @@ class TextBoxTUI(App):
         status_label = self.query_one("#status_label", Label)
         status_label.update(msg)
 
+    def action_pause(self):
+        """切换暂停状态"""
+        self.active = not self.active
+        status = "激活" if self.active else "暂停"
+        self.update_status(f"应用已{status}。")
+        main_container = self.query_one("#main_container")
+        main_container.disabled = not self.active
+
+
     def action_generate(self) -> None:
         """生成图片"""
         self.update_status("正在生成图片...")
@@ -592,5 +604,5 @@ class TextBoxTUI(App):
 
 
 if __name__ == "__main__":
-    app = TextBoxTUI()
+    app = ManosabaTUI()
     app.run()
