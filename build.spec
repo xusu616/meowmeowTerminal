@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller 单文件打包配置 - 修复版本
-# 使用方法: pyinstaller build_onefile.spec
+# PyInstaller 单文件打包配置 - 优化版本
+# 使用方法: pyinstaller build_onefile_optimized.spec
 
 import os
 import glob
@@ -20,70 +20,31 @@ def collect_files(pattern, dest_folder='.'):
         pass
     return files
 
-def collect_folder_files(folder_path, dest_folder):
-    """安全地收集文件夹中的所有文件"""
-    files = []
-    try:
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            for root, dirs, filenames in os.walk(folder_path):
-                for filename in filenames:
-                    full_path = os.path.join(root, filename)
-                    # 计算相对路径，用于保持目录结构
-                    rel_path = os.path.relpath(root, folder_path)
-                    if rel_path == '.':
-                        final_dest = dest_folder
-                    else:
-                        final_dest = os.path.join(dest_folder, rel_path)
-                    files.append((full_path, final_dest))
-    except Exception:
-        pass
-    return files
-
 # 收集所有资源文件
 datas = []
 
-# 添加核心Python文件
+# 添加核心Python文件 - 不包含tui.py
 core_files = [
+    'main.py',
     'core.py',
     'gui.py', 
     'config.py',
     'clipboard_utils.py',
     'image_processor.py',
     'text_fit_draw.py',
-    'image_fit_paste.py'
+    'image_fit_paste.py',
+    'ai_client.py',
+    'sentiment_analyzer.py',
+    'gui_components.py',
+    'gui_hotkeys.py',
+    'gui_settings.py',
+    'path_utils.py'
 ]
 
 for file in core_files:
     if os.path.exists(file):
         datas.append((file, '.'))
 
-# 添加字体文件
-datas.extend(collect_files('assets/fonts/*.ttf', 'assets/fonts'))
-datas.extend(collect_files('assets/fonts/*.otf', 'assets/fonts'))
-
-# 添加配置文件 - 使用具体文件而不是通配符
-config_files = [
-    'config/character_meta.json',
-    'config/keymap.json',
-    'config/process_whitelist.json',
-    'config/text_config.json'
-]
-
-for config_file in config_files:
-    if os.path.exists(config_file):
-        datas.append((config_file, 'config'))
-
-# 添加背景资源
-datas.extend(collect_folder_files('assets/background', 'assets/background'))
-
-# 添加角色资源
-character_base_path = 'assets/chara'
-if os.path.exists(character_base_path):
-    for char_folder in os.listdir(character_base_path):
-        char_path = os.path.join(character_base_path, char_folder)
-        if os.path.isdir(char_path):
-            dest_path = os.path.join('assets/chara', char_folder)
-            datas.extend(collect_folder_files(char_path, dest_path))
 
 # 收集证书文件
 try:
@@ -92,7 +53,7 @@ try:
 except:
     pass
 
-# 隐藏导入的模块
+# 隐藏导入的模块 - 只包含必要的模块
 hiddenimports = [
     # PIL相关
     'PIL._tkinter_finder',
@@ -108,6 +69,7 @@ hiddenimports = [
     'tkinter.ttk',
     
     # 网络请求
+    'openai',
     'requests',
     'requests.utils',
     'requests.auth',
@@ -121,7 +83,7 @@ hiddenimports = [
     
     # Windows API
     'win32clipboard',
-    'win32gui',
+    # 'win32gui',
     'win32process',
     'win32api',
     'win32con',
@@ -137,6 +99,11 @@ hiddenimports = [
     
     # 剪贴板
     'pyperclip',
+    'pyclip',
+    
+    # 其他必要模块
+    'yaml',
+    'pilmoji'
 ]
 
 # 尝试收集一些可能被动态导入的模块
@@ -145,7 +112,7 @@ try:
 except:
     pass
 
-# 排除不需要的库
+# 排除不需要的库 - 增加更多排除项以减小体积
 excludes = [
     'matplotlib',
     'numpy',
@@ -153,11 +120,22 @@ excludes = [
     'scipy',
     'test',
     'unittest',
-    'email',
     'pydoc',
     'doctest',
     'setuptools',
     'pip',
+    'jupyter',
+    'IPython',
+    'notebook',
+    'rich',
+    'textual',  # 不使用的TUI库
+    'pytest',
+    'sphinx',
+    'bz2',
+    'lzma',
+    'sqlite3',
+    'tkinter.test',
+    'tkinter.ttk.test'
 ]
 
 a = Analysis(
@@ -185,7 +163,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='mahoshojo_textbox',
+    name='魔裁文本框',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
