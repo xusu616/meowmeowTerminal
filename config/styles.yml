@@ -4,56 +4,59 @@
   font_family: font3
   font_size: 55
   image_components:
+  - align: middle-center
+    enabled: true
+    fill_mode: height
+    layer: 3
+    name: 背景
+    type: background
+    use_fixed_background: false
   - align: bottom-left
     enabled: true
-    layer: 0
+    layer: 4
+    name: 角色立绘
     offset_x: 900
     offset_y: -700
-    overlay: ''
     scale: 1.4
     type: character
+    use_fixed_character: false
   - align: bottom-center
     enabled: true
-    layer: 1
-    offset_x: 0
-    offset_y: 0
+    layer: 5
     overlay: 文本框1.webp
-    scale: 1.0
     type: textbox
   - align: bottom-left
     enabled: true
-    layer: 2
+    layer: 6
     offset_x: 200
     offset_y: -300
     overlay: 名字框.webp
-    scale: 1.0
     type: namebox
-  - align: top-left
-    enabled: true
-    id: extra_2
-    layer: 3
+  - enabled: true
+    layer: 7
+    name: 书图标
     offset_x: 20
     offset_y: 20
     overlay: 书-左上.webp
-    scale: 1.0
     type: extra
   - align: top-right
     enabled: true
-    id: extra_3
-    layer: 4
-    offset_x: 0
-    offset_y: 0
+    layer: 8
+    name: 右上背景
     overlay: 枝叶-右上.webp
-    scale: 1.0
     type: extra
   - align: top-right
     enabled: true
-    id: extra_1
-    layer: 5
-    offset_x: 0
-    offset_y: 0
+    layer: 9
+    name: 设置图标
     overlay: 齿轮-右上.webp
-    scale: 1.0
+    type: extra
+  - align: bottom-left
+    enabled: true
+    layer: 10
+    name: Auto图标
+    offset_y: -25
+    overlay: Auto off-左下.webp
     type: extra
   paste_image_settings:
     align: center
@@ -65,8 +68,8 @@
     x: 1500
     y: 200
   shadow_color: '#000000'
-  shadow_offset_x: 3
-  shadow_offset_y: 3
+  shadow_offset_x: 0
+  shadow_offset_y: 0
   text_align: left
   text_color: '#FFFFFF'
   text_valign: top
@@ -83,23 +86,30 @@ default:
   image_components:
   - align: bottom-center
     enabled: true
+    fill_mode: width
     layer: 0
-    offset_x: 0
-    offset_y: 0
+    name: 背景
+    overlay: c22
+    type: background
+    use_fixed_background: false
+  - align: bottom-center
+    enabled: true
+    layer: 3
+    name: 底部文本框
     overlay: 文本框1.webp
-    scale: 1.0
     type: textbox
   - align: bottom-left
     enabled: true
-    layer: 3
-    offset_x: 0
+    layer: 4
+    name: 角色立绘
     offset_y: 50
-    overlay: ''
     scale: 1.6
     type: character
+    use_fixed_character: false
   - align: bottom-left
     enabled: true
-    layer: 4
+    layer: 5
+    name: 角色名称
     offset_x: 450
     offset_y: -400
     overlay: 名字框.webp
@@ -115,8 +125,8 @@ default:
     x: 1500
     y: 200
   shadow_color: '#000000'
-  shadow_offset_x: 3
-  shadow_offset_y: 3
+  shadow_offset_x: 0
+  shadow_offset_y: 0
   text_align: left
   text_color: '#FFFFFF'
   text_valign: top
@@ -128,46 +138,42 @@ default:
 思索:
   aspect_ratio: '5:4'
   bracket_color: '#ef4f54'
-  font_family: font3
+  font_family: font2
   font_size: 80
   image_components:
-  - align: bottom-left
-    enabled: false
-    layer: 0
-    offset_x: 900
-    offset_y: -700
-    overlay: ''
-    scale: 1.4
-    type: character
-  - align: bottom-center
-    enabled: false
-    layer: 1
-    offset_x: 0
-    offset_y: 0
-    overlay: 文本框1.webp
-    scale: 1.0
-    type: textbox
-  - align: bottom-left
-    enabled: false
-    layer: 2
-    offset_x: 200
-    offset_y: -300
-    overlay: 名字框.webp
-    scale: 1.0
-    type: namebox
+  - align: bottom-right
+    enabled: true
+    fill_mode: height
+    layer: 3
+    name: 背景
+    overlay: c14.webp
+    type: background
+    use_fixed_background: true
   - align: middle-right
     enabled: true
-    id: extra_9
-    layer: 3
-    offset_x: 0
-    offset_y: 0
+    layer: 4
+    name: 背景遮罩
     overlay: 思考-背景5：4.webp
     scale: 1.5
     type: extra
+  - align: bottom-right
+    enabled: false
+    layer: 5
+    name: 艾玛
+    overlay: 思考-艾玛.webp
+    scale: 1.4
+    type: extra
+  - align: bottom-right
+    enabled: true
+    layer: 6
+    name: 希罗
+    overlay: 思考-希罗.webp
+    scale: 1.4
+    type: extra
   - align: middle-right
     enabled: true
-    id: extra_3
-    layer: 4
+    layer: 7
+    name: 小对话框
     offset_x: -840
     offset_y: 400
     overlay: 思考-小对话框.webp
@@ -175,8 +181,8 @@ default:
     type: extra
   - align: middle-right
     enabled: true
-    id: extra_2
-    layer: 5
+    layer: 8
+    name: 红对话框
     offset_x: -800
     offset_y: -100
     overlay: 思考-红对话框.webp
@@ -184,8 +190,8 @@ default:
     type: extra
   - align: middle-left
     enabled: false
-    id: extra_6
-    layer: 6
+    layer: 9
+    name: 赞同
     offset_x: 150
     offset_y: -270
     overlay: 思考-赞同.webp
@@ -193,8 +199,8 @@ default:
     type: extra
   - align: middle-left
     enabled: true
-    id: extra_7
-    layer: 7
+    layer: 10
+    name: 反驳
     offset_x: 150
     offset_y: -270
     overlay: 思考-反驳.webp
@@ -202,31 +208,28 @@ default:
     type: extra
   - align: middle-left
     enabled: false
-    id: extra_8
-    layer: 8
+    layer: 11
+    name: 疑问
     offset_x: 150
     offset_y: -270
     overlay: 思考-疑问.webp
     scale: 1.5
     type: extra
-  - align: bottom-right
-    enabled: false
-    id: extra_4
-    layer: 9
-    offset_x: 0
-    offset_y: 0
-    overlay: 思考-艾玛.webp
-    scale: 1.4
-    type: extra
-  - align: bottom-right
+  - align: middle-center
     enabled: true
-    id: extra_5
-    layer: 10
-    offset_x: 0
-    offset_y: 0
-    overlay: 思考-希罗.webp
-    scale: 1.4
-    type: extra
+    font_family: font2
+    font_size: 60
+    layer: 12
+    max_width: 500
+    name: 小文本框内容
+    offset_x: -120
+    offset_y: 380
+    shadow_color: '#000000'
+    shadow_offset_x: 0
+    shadow_offset_y: 0
+    text: 返回
+    text_color: '#000000'
+    type: text
   paste_image_settings:
     align: center
     enabled: always
@@ -237,8 +240,8 @@ default:
     x: 200
     y: 1200
   shadow_color: '#000000'
-  shadow_offset_x: 3
-  shadow_offset_y: 3
+  shadow_offset_x: 0
+  shadow_offset_y: 0
   text_align: center
   text_color: '#FFFFFF'
   text_valign: middle
