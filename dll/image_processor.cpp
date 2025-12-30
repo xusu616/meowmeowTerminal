@@ -11,7 +11,7 @@
 #include <vector>
 
 // 计时用
-#define _DEBUG
+//#define _DEBUG
 #ifdef _DEBUG
 #include <chrono>
 #define DEBUG_PRINT(fmt, ...) printf("[DEBUG] " fmt "\n", ##__VA_ARGS__)
@@ -208,7 +208,7 @@ struct StyleConfig {
 
 // ==================== 通用工具函数 ====================
 namespace utils {
-
+#ifdef _DEBUG
 // 时间测量辅助类
 class Timer {
 private:
@@ -252,7 +252,7 @@ public:
     return static_cast<double>(duration.count());
   }
 };
-
+#endif
 // 计算缩放后的尺寸
 SDL_Rect CalculateScaledRect(int src_width, int src_height, int dst_width, int dst_height, const std::string &fill_mode) {
   SDL_Rect result = {0, 0, src_width, src_height};
