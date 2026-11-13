@@ -23,10 +23,12 @@ class KeyHookTests(unittest.TestCase):
         self.user32 = user32
         self.enters = 0
         self.toggles = 0
+        self.ime_open = False
         namespace = {
             "keyboard": types.SimpleNamespace(KEY_DOWN="down"),
             "ctypes": types.SimpleNamespace(windll=types.SimpleNamespace(user32=user32)),
             "_intercepted_enters": set(),
+            "is_ime_candidate_open": lambda: self.ime_open,
             "on_enter": lambda: setattr(self, "enters", self.enters + 1),
             "toggle": lambda: setattr(self, "toggles", self.toggles + 1),
         }
@@ -48,6 +50,19 @@ class KeyHookTests(unittest.TestCase):
         event.event_type = "up"
         self.assertTrue(self.enter(event))
         self.assertEqual(self.enters, 0)
+
+    def test_ime_candidate_open_passes_enter_through(self):
+        self.ime_open = True
+        event = types.SimpleNamespace(event_type="down", scan_code=28)
+        self.assertTrue(self.enter(event))
+        event.event_type = "up"
+        self.assertTrue(self.enter(event))
+        self.assertEqual(self.enters, 0)
+
+        self.ime_open = False
+        event.event_type = "down"
+        self.assertFalse(self.enter(event))
+        self.assertEqual(self.enters, 1)
 
     def test_pause_uses_os_modifier_state(self):
         event = types.SimpleNamespace(event_type="down", scan_code=25)
