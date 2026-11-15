@@ -1,3 +1,5 @@
+> 📦 **Release 下载提示**：请前往对应的 GitLab 仓库查看或下载 Release（GitHub 端暂不重复上传）👉 [https://gitlab.com/xusu616/meowmeowTerminal/-/releases](https://gitlab.com/xusu616/meowmeowTerminal/-/releases) （[GitLab 仓库主页](https://gitlab.com/xusu616/meowmeowTerminal)）
+
 # 🎭魔法少女的魔女裁判 文本框生成器
 
 一个基于Python的自动化表情包生成工具，能够快速生成带有自定义文本的魔法少女的魔女裁判文本框图片。[灵感来源与代码参考](https://github.com/MarkCup-Official/Anan-s-Sketchbook-Chat-Box)
