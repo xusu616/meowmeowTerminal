@@ -281,19 +281,27 @@ def _is_window_uncloaked_and_visible(api: _Win32Api, hwnd: int) -> bool:
     return _is_rect_on_screen(rect.left, rect.top, rect.right, rect.bottom)
 
 
-def _check_window_matches(api: _Win32Api, hwnd: int) -> bool:
-    if not hwnd or not api.user32.IsWindowVisible(hwnd):
+def _matches_hwnd_candidate_identity(api: _Win32Api, hwnd: int) -> bool:
+    """校验 HWND 当前属于候选窗，避免缓存污染和窗口句柄复用。"""
+    if not hwnd:
         return False
     cls_buf = ctypes.create_unicode_buffer(256)
     cls_len = api.user32.GetClassNameW(hwnd, cls_buf, len(cls_buf))
     if cls_len <= 0:
         return False
     class_name = cls_buf.value
-    if not _matches_ime_candidate_identity(
+    return _matches_ime_candidate_identity(
         class_name, lambda: _get_process_name_by_hwnd(api, hwnd)
-    ):
-        return False
-    return _is_window_uncloaked_and_visible(api, hwnd)
+    )
+
+
+def _check_window_matches(api: _Win32Api, hwnd: int) -> bool:
+    return (
+        bool(hwnd)
+        and bool(api.user32.IsWindowVisible(hwnd))
+        and _matches_hwnd_candidate_identity(api, hwnd)
+        and _is_window_uncloaked_and_visible(api, hwnd)
+    )
 
 
 def _collect_visible_app_frames(api: _Win32Api) -> List[int]:
@@ -536,9 +544,6 @@ class _UiaWorker:
                 return False
             if _is_hwnd_cloaked(api, hwnd):
                 return False
-        else:
-            hwnd = 0
-
         rect = wintypes.RECT()
         hr_rect = _com_vtable_fn(
             elem, 43, ctypes.HRESULT, ctypes.POINTER(wintypes.RECT)
@@ -547,9 +552,18 @@ class _UiaWorker:
             return False
         if not _is_rect_on_screen(rect.left, rect.top, rect.right, rect.bottom):
             return False
-        if hwnd:
-            _record_discovered_hwnd(hwnd)
         return True
+
+    def _cache_uia_candidate_hwnd(self, api: _Win32Api, elem: ctypes.c_void_p) -> None:
+        """只缓存候选节点的原生窗口，通用宿主容器不能作为候选窗。"""
+        hwnd_val = wintypes.HWND()
+        hr = _com_vtable_fn(
+            elem, 36, ctypes.HRESULT, ctypes.POINTER(wintypes.HWND)
+        )(elem, ctypes.byref(hwnd_val))
+        if hr == 0 and hwnd_val.value:
+            hwnd = int(hwnd_val.value)
+            if _matches_hwnd_candidate_identity(api, hwnd):
+                _record_discovered_hwnd(hwnd)
 
     def _find_visible_in_scope(
         self, api: _Win32Api, target_elem: ctypes.c_void_p, scope: int, cond: ctypes.c_void_p
@@ -579,6 +593,7 @@ class _UiaWorker:
                 if get_elem(arr, idx, ctypes.byref(elem)) == 0 and elem.value:
                     try:
                         if self._is_uia_element_visible(api, elem):
+                            self._cache_uia_candidate_hwnd(api, elem)
                             return True
                     finally:
                         _com_release(elem)
@@ -689,7 +704,7 @@ def _is_hwnd_and_root_visible(api: _Win32Api, hwnd: int) -> bool:
 
 
 def _check_discovered_hwnds(api: _Win32Api) -> bool:
-    """微秒级快路径：直接校验已捕获到的输入法候选框 HWND 当前是否仍可见且未遮蔽。"""
+    """快路径：校验已捕获的候选窗身份及当前可见性，清理失效的窗口句柄。"""
     with _discovered_lock:
         candidates = list(_discovered_ime_hwnds)
     if not candidates:
@@ -698,7 +713,7 @@ def _check_discovered_hwnds(api: _Win32Api) -> bool:
     stale = []
     matched = False
     for hwnd in candidates:
-        if not api.user32.IsWindow(hwnd):
+        if not api.user32.IsWindow(hwnd) or not _matches_hwnd_candidate_identity(api, hwnd):
             stale.append(hwnd)
             continue
         if _is_hwnd_and_root_visible(api, hwnd):
@@ -806,7 +821,7 @@ def is_ime_candidate_open() -> bool:
     """检测当前是否存在可见且未被遮蔽（uncloaked）的输入法候选框。
 
     设计为在低级键盘钩子 (WH_KEYBOARD_LL) 中同步调用：
-    1. 微秒级快路径：直接校验后台 WinEvent/UIA 已捕获到的候选窗 HWND 实时可见性；
+    1. 快路径：校验后台 WinEvent/UIA 已捕获到的候选窗 HWND 身份及实时可见性；
     2. EnumWindows / FindWindowExW / ApplicationFrameWindow 检查桌面与宿主容器；
     3. UI Automation 跨 Z-order 带兜底，并在独立线程设严格超时。
     """

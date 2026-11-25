@@ -314,6 +314,120 @@ class ImeVisibilityTests(unittest.TestCase):
         with ime_utils._discovered_lock:
             self.assertNotIn(9999, ime_utils._discovered_ime_hwnds)
 
+    def _make_fake_uia_vtable(self, hwnd):
+        def vtable_fn(ptr, index, restype, *argtypes):
+            def call(_self, *args):
+                output = args[-1]
+                if ptr.value == 1 and index == 6:
+                    ctypes.cast(output, ctypes.POINTER(ctypes.c_void_p)).contents.value = 2
+                elif ptr.value == 2 and index == 3:
+                    ctypes.cast(output, ctypes.POINTER(ime_utils.wintypes.INT)).contents.value = 1
+                elif ptr.value == 2 and index == 4:
+                    ctypes.cast(output, ctypes.POINTER(ctypes.c_void_p)).contents.value = 3
+                elif ptr.value == 3 and index == 38:
+                    ctypes.cast(output, ctypes.POINTER(ime_utils.wintypes.BOOL)).contents.value = 0
+                elif ptr.value == 3 and index == 36:
+                    ctypes.cast(output, ctypes.POINTER(ime_utils.wintypes.HWND)).contents.value = hwnd
+                elif ptr.value == 3 and index == 43:
+                    rect = ctypes.cast(output, ctypes.POINTER(ime_utils.wintypes.RECT)).contents
+                    rect.left, rect.top, rect.right, rect.bottom = (100, 100, 800, 600)
+                else:
+                    raise AssertionError(f"unexpected UIA method: {ptr.value}, {index}")
+                return 0
+            return call
+        return vtable_fn
+
+    def test_uia_app_frame_collection_does_not_cache_container_as_candidate(self):
+        fake_api = self._make_fake_api(windows={
+            100: {
+                "visible": True,
+                "class": "ApplicationFrameWindow",
+                "rect": (100, 100, 800, 600),
+                "pid": 1,
+                "path": r"C:\Windows\explorer.exe",
+            },
+        })
+        worker = ime_utils._UiaWorker()
+        worker._root = ctypes.c_void_p(1)
+        worker._app_frame_cond = ctypes.c_void_p(4)
+        with mock.patch.object(ime_utils, "_com_vtable_fn", side_effect=self._make_fake_uia_vtable(100)), \
+             mock.patch.object(ime_utils, "_com_release"):
+            self.assertEqual(len(worker._collect_uia_app_frames(fake_api)), 1)
+        with mock.patch.object(ime_utils, "_get_win32_api", return_value=fake_api), \
+             mock.patch.object(ime_utils, "_is_uia_ime_candidate_open", return_value=False):
+            self.assertFalse(ime_utils.is_ime_candidate_open())
+        with ime_utils._discovered_lock:
+            self.assertNotIn(100, ime_utils._discovered_ime_hwnds)
+
+    def test_discovered_hwnd_reused_by_normal_window_is_pruned(self):
+        fake_api = self._make_fake_api(windows={
+            100: {
+                "visible": True,
+                "class": "Notepad",
+                "rect": (100, 100, 800, 600),
+                "pid": 1,
+                "path": r"C:\Windows\notepad.exe",
+            },
+        })
+        ime_utils._record_discovered_hwnd(100)
+        with mock.patch.object(ime_utils, "_get_win32_api", return_value=fake_api), \
+             mock.patch.object(ime_utils, "_is_uia_ime_candidate_open", return_value=False):
+            self.assertFalse(ime_utils.is_ime_candidate_open())
+        with ime_utils._discovered_lock:
+            self.assertNotIn(100, ime_utils._discovered_ime_hwnds)
+
+    def test_uia_candidate_without_native_hwnd_still_matches(self):
+        fake_api = self._make_fake_api(windows={})
+        worker = ime_utils._UiaWorker()
+        worker._root = ctypes.c_void_p(1)
+        with mock.patch.object(ime_utils, "_com_vtable_fn", side_effect=self._make_fake_uia_vtable(0)), \
+             mock.patch.object(ime_utils, "_com_release"):
+            self.assertTrue(worker._find_visible_in_scope(
+                fake_api, worker._root, ime_utils._TREE_SCOPE_CHILDREN, ctypes.c_void_p(4)
+            ))
+        with ime_utils._discovered_lock:
+            self.assertFalse(ime_utils._discovered_ime_hwnds)
+
+    def test_uia_candidate_native_hwnd_is_cached(self):
+        fake_api = self._make_fake_api(windows={
+            100: {
+                "visible": True,
+                "class": "Windows.UI.Core.CoreWindow",
+                "rect": (100, 100, 800, 600),
+                "pid": 1,
+                "path": r"C:\Windows\SystemApps\TextInputHost.exe",
+            },
+        })
+        worker = ime_utils._UiaWorker()
+        worker._root = ctypes.c_void_p(1)
+        with mock.patch.object(ime_utils, "_com_vtable_fn", side_effect=self._make_fake_uia_vtable(100)), \
+             mock.patch.object(ime_utils, "_com_release"):
+            self.assertTrue(worker._find_visible_in_scope(
+                fake_api, worker._root, ime_utils._TREE_SCOPE_CHILDREN, ctypes.c_void_p(4)
+            ))
+        with ime_utils._discovered_lock:
+            self.assertIn(100, ime_utils._discovered_ime_hwnds)
+
+    def test_uia_candidate_does_not_cache_non_candidate_container_hwnd(self):
+        fake_api = self._make_fake_api(windows={
+            100: {
+                "visible": True,
+                "class": "ApplicationFrameWindow",
+                "rect": (100, 100, 800, 600),
+                "pid": 1,
+                "path": r"C:\Windows\explorer.exe",
+            },
+        })
+        worker = ime_utils._UiaWorker()
+        worker._root = ctypes.c_void_p(1)
+        with mock.patch.object(ime_utils, "_com_vtable_fn", side_effect=self._make_fake_uia_vtable(100)), \
+             mock.patch.object(ime_utils, "_com_release"):
+            self.assertTrue(worker._find_visible_in_scope(
+                fake_api, worker._root, ime_utils._TREE_SCOPE_CHILDREN, ctypes.c_void_p(4)
+            ))
+        with ime_utils._discovered_lock:
+            self.assertNotIn(100, ime_utils._discovered_ime_hwnds)
+
     def test_uia_worker_timeout_returns_false(self):
         worker = ime_utils._UiaWorker()
         worker._started = True
